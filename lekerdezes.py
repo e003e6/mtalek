@@ -6,6 +6,12 @@ def tag_formalo(tag) -> list:
     return [tag.get_text(strip=True) for tag in tag.contents if tag.get_text(strip=True)]
 
 
+def szovegkereso(tag) -> bool:
+    szavak = ['phd', 'kandidátus']
+    text = tag.get_text(strip=True).lower()
+    return any(szo in text for szo in szavak)
+
+
 def ppprint(adatok: list):
     for a in adatok:
         print(f'{a[0]}:')
@@ -40,11 +46,16 @@ def getinfo(url: str) -> list:
         print('Az oldalon több ember van!')
         return
 
-
     # adatok kiszedése
+
+    # ellenőrzni kell, hogy még létezik e az ember az adatbázisban:
+    if mbox.div.get_text(strip=True) == 'Nincs a keresési feltételeknek megfelelő személy.':
+        print('nincsen ilyen személy')
+        return 
+    
     nev = mbox.div.h3.text
     kepurl = mbox.div.img.get('src')
-    mtmturl = mbox.find('a').get('href')
+    mtmturl = mbox.find('a').get('href') if mbox.find('a') else None
 
     adatok = [['nev', nev], ['kepurl', kepurl], ['mtmturl', mtmturl]]
 
@@ -52,22 +63,36 @@ def getinfo(url: str) -> list:
 
     for i, adat in enumerate(adatsorok):
         # három lehetőség van: 1. ez egy adatsor, 2. ez egy címor amit egy felsorolás követ, 3. ez egy felsorolás
-    
-        # ha ez egy adatsor
-        if adat.name == 'p' and adatsorok[i+1].name != 'ul':
-            adatlista = tag_formalo(adat)
-            if adatlista[0] == 'Publikációk':
+
+        adatlista = tag_formalo(adat)
+        
+        # a phd cimkét külön kezeljük 
+        # (a html-en mint címsor jelenkik meg pedig nem az)
+        if adat.name == 'p' and adat.find("span") and len(adatlista)==1 and szovegkereso(adatsorok[i-1]):
+            # p tag és azon belül span tag-ban van a szöveg, egy elemből áll és az előző elem tartalmazza a phd-szót
+            
+            phdcimke = adat.get_text(strip=True)
+            adatok[-1].append(phdcimke)
+            continue
+
+        # ha ez egy adatsor (címsor és tartalom egy tag alatt)
+        if adat.name == 'p' and len(adatlista) > 1:
+            # adatsor ha több elemből áll (cím és tartalom)
+
+            if adatlista[0] == 'Publikációk': # publikációk elem nem kell (már fent el lett mentve)
                 continue
+                
             adatok.append(adatlista)
             continue
     
-        # ha ez egy címsor
-        # pass
-    
         # ha ez egy felsorolás
         if adat.name == 'ul':
-            adatlista = tag_formalo(adat)
-            cim = adatsorok[i-1].get_text(strip=True)
+            
+            # ellenőrzini kell hogy a felsorolás üres-e
+            if adat.find("li") is None:
+                continue
+
+            cim = adatsorok[i-1].get_text(strip=True) # a cím ez előző p-tag
             adatlista.insert(0, cim)
             adatok.append(adatlista)
 
